@@ -21,8 +21,9 @@ Application web (PWA) pour créer en quelques minutes des propositions tarifaire
      `reference;designation;marque;categorie;prix_public_ht;prix_vente_ht;unite`
    - Dans Excel, enregistrez au format **CSV (séparateur point-virgule)**, puis « Importer un CSV ».
    - Choisissez **Fusionner** (met à jour les mêmes références, ajoute les nouvelles) ou **Remplacer tout**.
-   - Catégories : `batterie`, `freinage`, `adblue`, `pneus`, `autre`.
+   - Catégories : `batterie`, `freinage`, `adblue`, `pneus`, `huiles` (huiles & liquides), `autre`.
 5. **Clients** (👥) : nom du garage, contact, téléphone, email, ville, remise habituelle en %.
+   Import / export CSV possible aussi (colonnes `nom;contact;telephone;email;ville;remise;notes`) : un client déjà présent (même nom et même ville) est mis à jour.
 6. **Nouvelle offre** (📄) :
    - choisissez le client (sa remise habituelle s'applique en remise globale) ;
    - « Ajouter des produits » : tapez une référence ou un mot-clé (ex. « plaq av », « adblue »), touchez un produit pour l'ajouter (un 2e appui ajoute +1) ;

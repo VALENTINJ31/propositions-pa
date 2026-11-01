@@ -27,14 +27,15 @@ function fmtDate(iso) { if (!iso) return ''; const [y, m, d] = iso.slice(0, 10).
 function addDays(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + (+n || 0)); return d.toISOString().slice(0, 10); }
 const validUntil = o => addDays(o.date || todayISO(), o.validityDays || 0);
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const CATS = { batterie: 'Batterie', freinage: 'Freinage', adblue: 'AdBlue', pneus: 'Pneus', autre: 'Autre' };
-const CAT_ICON = { batterie: '🔋', freinage: '🛞', adblue: '💧', pneus: '⭕', autre: '🔧' };
+const CATS = { batterie: 'Batterie', freinage: 'Freinage', adblue: 'AdBlue', pneus: 'Pneus', huiles: 'Huiles & liquides', autre: 'Autre' };
+const CAT_ICON = { batterie: '🔋', freinage: '🛞', adblue: '💧', pneus: '⭕', huiles: '🛢️', autre: '🔧' };
 function normCat(c) {
   const n = norm(c);
   if (n.startsWith('bat')) return 'batterie';
   if (n.startsWith('frein') || n.includes('plaquet') || n.includes('disque')) return 'freinage';
   if (n.includes('adblue') || n.includes('ad blue')) return 'adblue';
   if (n.startsWith('pneu')) return 'pneus';
+  if (/huile|lubri|liquide|lave|refroid/.test(n)) return 'huiles';
   return 'autre';
 }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200); }
@@ -580,7 +581,11 @@ function editClient(c, after) {
 function viewClients(app) {
   const st = viewClients.state || (viewClients.state = { q: '' });
   app.innerHTML = `<div class="row between"><h1>Clients</h1><button class="btn primary" id="add">＋ Client</button></div>
-    <div class="card"><input id="q" type="search" placeholder="Rechercher un garage, une ville…" value="${esc(st.q)}"><ul class="list" id="list"></ul></div>`;
+    <div class="card"><input id="q" type="search" placeholder="Rechercher un garage, une ville…" value="${esc(st.q)}"><ul class="list" id="list"></ul></div>
+    <div class="card"><h2>Import / export CSV (Excel)</h2>
+      <p class="small muted">Colonnes : <code>${CLIENT_CSV_HEAD.join(';')}</code>. À l'import, un client déjà présent (même nom et même ville) est mis à jour.</p>
+      <div class="btns"><button class="btn" id="imp">⬆️ Importer un CSV</button><button class="btn" id="exp">⬇️ Exporter les clients</button></div>
+      <input type="file" id="file" accept=".csv,text/csv,text/plain" class="hidden"></div>`;
   const draw = () => {
     const q = norm(st.q);
     const list = sortedClients().filter(c => !q || norm([c.name, c.contact, c.city, c.phone, c.email].join(' ')).includes(q));
@@ -595,6 +600,33 @@ function viewClients(app) {
   $('#q').oninput = e => { st.q = e.target.value; draw(); };
   $('#list').onclick = e => { const li = e.target.closest('[data-c]'); if (li) go('#/client/' + li.dataset.c); };
   $('#add').onclick = () => editClient(null, c => go('#/client/' + c.id));
+  $('#exp').onclick = () => download(`clients-${todayISO()}.csv`, toCSV(CLIENT_CSV_HEAD, sortedClients().map(c => [c.name, c.contact, c.phone, c.email, c.city, String(+c.discount || 0).replace('.', ','), c.notes])), 'text/csv;charset=utf-8');
+  $('#imp').onclick = () => $('#file').click();
+  $('#file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) importClientsCSV(await readText(f)); };
+}
+const CLIENT_CSV_HEAD = ['nom', 'contact', 'telephone', 'email', 'ville', 'remise', 'notes'];
+function toCSV(head, rows) {
+  const q = v => { v = String(v == null ? '' : v); return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  return '\ufeff' + [head.join(';'), ...rows.map(r => r.map(q).join(';'))].join('\r\n') + '\r\n';
+}
+function importClientsCSV(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) return alert('Fichier vide ou illisible.');
+  const H = rows[0].map(h => norm(h).replace(/[^a-z]/g, ''));
+  const find = (...keys) => H.findIndex(h => keys.some(k => h.startsWith(k)));
+  const ix = { name: find('nom', 'garage', 'raison', 'client'), contact: find('contact', 'interlocuteur'), phone: find('tel', 'portable', 'mobile'),
+    email: find('email', 'mail', 'courriel'), city: find('ville', 'commune'), discount: find('remise'), notes: find('note', 'comment') };
+  if (ix.name < 0) return alert('Colonne « nom » introuvable dans la 1re ligne.');
+  const key = c => norm(c.name) + '|' + norm(c.city);
+  const items = rows.slice(1).map(r => {
+    const g = k => ix[k] >= 0 ? (r[ix[k]] || '').trim() : '';
+    return { name: g('name'), contact: g('contact'), phone: g('phone'), email: g('email'), city: g('city'), discount: parseNum(g('discount')), notes: g('notes') };
+  }).filter(c => c.name);
+  if (!confirm(`${items.length} client(s) lu(s). Les importer ?\n(Les clients déjà présents, même nom et même ville, seront mis à jour.)`)) return;
+  let a = 0, u = 0;
+  const before = db.clients.slice();
+  items.forEach(c => { const ex = before.find(x => key(x) === key(c)); if (ex) { Object.assign(ex, c); delete ex.demo; u++; } else { db.clients.push(Object.assign({ id: uid() }, c)); a++; } });
+  save('clients'); toast(`${a} client(s) ajouté(s), ${u} mis à jour`); route();
 }
 function viewClient(app, id) {
   const c = byId('clients', id); if (!c) return go('#/clients');
@@ -670,7 +702,7 @@ function viewCatalog(app) {
       <ul class="list" id="list"></ul>
     </div>
     <div class="card"><h2>Import / export CSV (Excel)</h2>
-      <p class="small muted">Colonnes : <code>reference;designation;marque;categorie;prix_public_ht;prix_vente_ht;unite</code>. Séparateur « ; » ou « , », décimales avec virgule acceptées. Catégories : batterie, freinage, adblue, pneus, autre.</p>
+      <p class="small muted">Colonnes : <code>reference;designation;marque;categorie;prix_public_ht;prix_vente_ht;unite</code>. Séparateur « ; » ou « , », décimales avec virgule acceptées. Catégories : batterie, freinage, adblue, pneus, huiles, autre.</p>
       <div class="btns"><button class="btn" id="imp">⬆️ Importer un CSV</button><button class="btn" id="exp">⬇️ Exporter le catalogue</button><button class="btn" id="tpl">Modèle CSV vide</button></div>
       <input type="file" id="file" accept=".csv,text/csv,text/plain" class="hidden">
     </div>`;
