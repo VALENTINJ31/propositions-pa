@@ -18,12 +18,14 @@ Application web (PWA) pour créer en quelques minutes des propositions tarifaire
 3. **Effacer les exemples** : Réglages → « Effacer les données d'exemple » (tout ce qui porte le badge *exemple*).
 4. **Catalogue** (📦) : ajoutez vos produits un par un, ou préparez-les dans Excel :
    - « Modèle CSV vide » télécharge un fichier avec les bonnes colonnes :
-     `reference;designation;marque;categorie;prix_public_ht;prix_vente_ht;unite`
+     `reference;designation;marque;categorie;prix_public_ht;prix_vente_ht;unite;prix_agent_ht`
+     (`prix_vente_ht` = prix MRA ; `prix_agent_ht` facultatif = prix agent / PNA)
    - Dans Excel, enregistrez au format **CSV (séparateur point-virgule)**, puis « Importer un CSV ».
    - Choisissez **Fusionner** (met à jour les mêmes références, ajoute les nouvelles) ou **Remplacer tout**.
    - Catégories : `batterie`, `freinage`, `adblue`, `pneus`, `huiles` (huiles & liquides), `autre`.
 5. **Clients** (👥) : nom du garage, contact, téléphone, email, ville, remise habituelle en %.
-   Import / export CSV possible aussi (colonnes `nom;contact;telephone;email;ville;remise;notes`) : un client déjà présent (même nom et même ville) est mis à jour.
+   Chaque client a un **tarif** : « MRA / réparateur » (prix de vente standard) ou « Agent » (prix agent, PNA). Dans une offre, les produits sont proposés au tarif du client choisi ; si vous changez de client, les lignes restées au prix catalogue basculent automatiquement.
+   Import / export CSV possible aussi (colonnes `nom;contact;telephone;email;ville;remise;tarif;notes`, tarif = `agent` ou `mra`) : un client déjà présent (même nom et même ville) est mis à jour.
 6. **Nouvelle offre** (📄) :
    - choisissez le client (sa remise habituelle s'applique en remise globale) ;
    - « Ajouter des produits » : tapez une référence ou un mot-clé (ex. « plaq av », « adblue »), touchez un produit pour l'ajouter (un 2e appui ajoute +1) ;

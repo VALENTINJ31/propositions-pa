@@ -105,11 +105,24 @@ function nextNumber() {
   s.nextNum = (s.nextNum || 1) + 1; save('settings');
   return n;
 }
-function lineFromProduct(p, qty) {
-  return { productId: p.id, ref: p.ref, name: p.name, brand: p.brand, unit: p.unit, publicPrice: +p.publicPrice || 0, price: +p.price || 0, qty: qty || 1, discount: 0 };
+// Tarif selon le client : « agent » (PNA) si le produit a un prix agent, sinon prix de vente standard (MRA)
+const isAgent = clientId => { const c = clientId && byId('clients', clientId); return !!(c && c.tarif === 'agent'); };
+const priceFor = (p, clientId) => (isAgent(clientId) && +p.priceAgent ? +p.priceAgent : +p.price || 0);
+function lineFromProduct(p, qty, clientId) {
+  return { productId: p.id, ref: p.ref, name: p.name, brand: p.brand, unit: p.unit, publicPrice: +p.publicPrice || 0, price: priceFor(p, clientId), qty: qty || 1, discount: 0 };
 }
-function refreshPrices(lines) {
-  return lines.map(l => { const p = l.productId && byId('products', l.productId); return p ? Object.assign({}, l, lineFromProduct(p, l.qty), { discount: l.discount }) : Object.assign({}, l); });
+function refreshPrices(lines, clientId) {
+  return lines.map(l => { const p = l.productId && byId('products', l.productId); return p ? Object.assign({}, l, lineFromProduct(p, l.qty, clientId), { discount: l.discount }) : Object.assign({}, l); });
+}
+// Au changement de client : ajuste les lignes restées au prix catalogue (les prix modifiés à la main sont conservés)
+function retarif(o) {
+  let n = 0;
+  o.lines.forEach(l => {
+    const p = l.productId && byId('products', l.productId); if (!p || !(+p.priceAgent)) return;
+    const target = priceFor(p, o.clientId);
+    if ((+l.price === +p.price || +l.price === +p.priceAgent) && +l.price !== target) { l.price = target; n++; }
+  });
+  return n;
 }
 
 /* ---------- Navigation ---------- */
@@ -226,7 +239,7 @@ function newOffer({ template, clientId, from } = {}) {
   };
   const src = template || from;
   if (src) {
-    o.lines = from && !template ? from.lines.map(l => Object.assign({}, l)) : refreshPrices(src.lines || []);
+    o.lines = from && !template ? from.lines.map(l => Object.assign({}, l)) : refreshPrices(src.lines || [], o.clientId);
     ['franco', 'delivery', 'message', 'globalDiscount', 'validityDays'].forEach(k => { if (src[k] != null && src[k] !== '') o[k] = src[k]; });
     if (from) o.clientId = clientId || from.clientId;
   }
@@ -306,12 +319,13 @@ function editor(app, o, coll) {
   const drawClient = () => {
     if (!isOffer) return;
     const c = client();
-    $('#clientInfo').innerHTML = c ? [c.contact, c.city, c.phone, c.email].filter(Boolean).map(esc).join(' · ') + (c.discount ? ` · remise habituelle <b>${pct(c.discount)}</b>` : '') : '';
+    $('#clientInfo').innerHTML = c ? [c.contact, c.city, c.phone, c.email].filter(Boolean).map(esc).join(' · ') + (c.discount ? ` · remise habituelle <b>${pct(c.discount)}</b>` : '') + ` · <b>${c.tarif === 'agent' ? 'tarif agent' : 'tarif MRA'}</b>` : '';
   };
   if (isOffer) {
     $('#client').onchange = e => {
       o.clientId = e.target.value; const c = client();
       if (c && +c.discount && !(+o.globalDiscount) && !o.lines.some(l => +l.discount)) { o.globalDiscount = +c.discount; $('#gd').value = o.globalDiscount; toast(`Remise habituelle de ${pct(c.discount)} appliquée`); }
+      const n = retarif(o); if (n) { toast(`${n} ligne(s) passée(s) au ${isAgent(o.clientId) ? 'tarif agent' : 'tarif MRA'}`); drawLines(); }
       persist(); drawClient(); drawTotals();
     };
     $('#addClient').onclick = () => editClient(null, c => { o.clientId = c.id; o.globalDiscount = +c.discount || o.globalDiscount; persist(); route(); });
@@ -434,7 +448,7 @@ function editor(app, o, coll) {
 function duplicateOffer(o, clientId) {
   const hasCat = o.lines.some(l => l.productId && byId('products', l.productId));
   const upd = hasCat && confirm('Mettre à jour les prix avec le catalogue actuel ?\n(OK = prix du catalogue, Annuler = garder les prix de l\'ancienne offre)');
-  newOffer({ from: Object.assign({}, o, { lines: upd ? refreshPrices(o.lines) : o.lines }), clientId });
+  newOffer({ from: Object.assign({}, o, { lines: upd ? refreshPrices(o.lines, clientId || o.clientId) : o.lines }), clientId });
   toast('Offre dupliquée');
 }
 
@@ -534,7 +548,7 @@ function pickProducts(o, onChange) {
           const inO = o.lines.find(l => l.productId === p.id);
           return `<div class="pick-item" data-p="${p.id}"><div class="grow"><div><b>${esc(p.name)}</b></div>
             <div class="muted small">${esc([p.ref, p.brand, p.unit].filter(Boolean).join(' · '))}</div></div>
-            <div class="right"><div class="num"><b>${money(p.price)}</b></div>${inO ? `<div class="in small">✓ ${num(inO.qty, 0)}</div>` : '<div class="muted small">＋ ajouter</div>'}</div></div>`;
+            <div class="right"><div class="num"><b>${money(priceFor(p, o.clientId))}</b></div>${inO ? `<div class="in small">✓ ${num(inO.qty, 0)}</div>` : '<div class="muted small">＋ ajouter</div>'}</div></div>`;
         }).join('') : `<div class="empty">Aucun produit trouvé.${db.products.length ? '' : ' Le catalogue est vide : ajoutez des produits dans l\'onglet Catalogue.'}</div>`;
       };
       $('#pq', f).oninput = draw;
@@ -543,7 +557,7 @@ function pickProducts(o, onChange) {
         const it = e.target.closest('[data-p]'); if (!it) return;
         const p = byId('products', it.dataset.p);
         const ex = o.lines.find(l => l.productId === p.id);
-        if (ex) ex.qty = (+ex.qty || 0) + 1; else o.lines.push(lineFromProduct(p, 1));
+        if (ex) ex.qty = (+ex.qty || 0) + 1; else o.lines.push(lineFromProduct(p, 1, o.clientId));
         onChange(); draw(); toast(`${p.name} ajouté`);
       };
       draw();
@@ -560,13 +574,14 @@ const CLIENT_FIELDS = [
   { k: 'email', label: 'Email', type: 'email' },
   { k: 'city', label: 'Ville' },
   { k: 'discount', label: 'Remise habituelle (%)', type: 'number' },
+  { k: 'tarif', label: 'Tarif', type: 'select', options: [['mra', 'MRA / réparateur (prix de vente)'], ['agent', 'Agent (prix agent / PNA)']] },
   { k: 'notes', label: 'Notes', type: 'textarea' }
 ];
 function editClient(c, after) {
   const isNew = !c;
   openDialog({
     title: isNew ? 'Nouveau client' : 'Modifier le client',
-    body: `<div class="grid2">${fieldsHTML(CLIENT_FIELDS.slice(0, 6), c || {})}</div>${fieldsHTML(CLIENT_FIELDS.slice(6), c || {})}`,
+    body: `<div class="grid2">${fieldsHTML(CLIENT_FIELDS.slice(0, 7), c || { tarif: 'mra' })}</div>${fieldsHTML(CLIENT_FIELDS.slice(7), c || {})}`,
     actions: [{ label: 'Annuler', novalidate: true }, {
       label: 'Enregistrer', cls: 'primary', onClick: f => {
         if (!f.reportValidity()) return false;
@@ -600,11 +615,11 @@ function viewClients(app) {
   $('#q').oninput = e => { st.q = e.target.value; draw(); };
   $('#list').onclick = e => { const li = e.target.closest('[data-c]'); if (li) go('#/client/' + li.dataset.c); };
   $('#add').onclick = () => editClient(null, c => go('#/client/' + c.id));
-  $('#exp').onclick = () => download(`clients-${todayISO()}.csv`, toCSV(CLIENT_CSV_HEAD, sortedClients().map(c => [c.name, c.contact, c.phone, c.email, c.city, String(+c.discount || 0).replace('.', ','), c.notes])), 'text/csv;charset=utf-8');
+  $('#exp').onclick = () => download(`clients-${todayISO()}.csv`, toCSV(CLIENT_CSV_HEAD, sortedClients().map(c => [c.name, c.contact, c.phone, c.email, c.city, String(+c.discount || 0).replace('.', ','), c.tarif === 'agent' ? 'agent' : 'mra', c.notes])), 'text/csv;charset=utf-8');
   $('#imp').onclick = () => $('#file').click();
   $('#file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) importClientsCSV(await readText(f)); };
 }
-const CLIENT_CSV_HEAD = ['nom', 'contact', 'telephone', 'email', 'ville', 'remise', 'notes'];
+const CLIENT_CSV_HEAD = ['nom', 'contact', 'telephone', 'email', 'ville', 'remise', 'tarif', 'notes'];
 function toCSV(head, rows) {
   const q = v => { v = String(v == null ? '' : v); return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   return '\ufeff' + [head.join(';'), ...rows.map(r => r.map(q).join(';'))].join('\r\n') + '\r\n';
@@ -615,12 +630,12 @@ function importClientsCSV(text) {
   const H = rows[0].map(h => norm(h).replace(/[^a-z]/g, ''));
   const find = (...keys) => H.findIndex(h => keys.some(k => h.startsWith(k)));
   const ix = { name: find('nom', 'garage', 'raison', 'client'), contact: find('contact', 'interlocuteur'), phone: find('tel', 'portable', 'mobile'),
-    email: find('email', 'mail', 'courriel'), city: find('ville', 'commune'), discount: find('remise'), notes: find('note', 'comment') };
+    email: find('email', 'mail', 'courriel'), city: find('ville', 'commune'), discount: find('remise'), tarif: find('tarif'), notes: find('note', 'comment') };
   if (ix.name < 0) return alert('Colonne « nom » introuvable dans la 1re ligne.');
   const key = c => norm(c.name) + '|' + norm(c.city);
   const items = rows.slice(1).map(r => {
     const g = k => ix[k] >= 0 ? (r[ix[k]] || '').trim() : '';
-    return { name: g('name'), contact: g('contact'), phone: g('phone'), email: g('email'), city: g('city'), discount: parseNum(g('discount')), notes: g('notes') };
+    return { name: g('name'), contact: g('contact'), phone: g('phone'), email: g('email'), city: g('city'), discount: parseNum(g('discount')), ...(ix.tarif >= 0 ? { tarif: /agent|agt|pna/.test(norm(g('tarif'))) ? 'agent' : 'mra' } : {}), notes: g('notes') };
   }).filter(c => c.name);
   if (!confirm(`${items.length} client(s) lu(s). Les importer ?\n(Les clients déjà présents, même nom et même ville, seront mis à jour.)`)) return;
   let a = 0, u = 0;
@@ -641,6 +656,7 @@ function viewClient(app, id) {
         <div><span class="muted">Téléphone</span><br>${c.phone ? `<a href="tel:${esc(tel)}">${esc(c.phone)}</a>` : '—'}</div>
         <div><span class="muted">Email</span><br>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</div>
         <div><span class="muted">Remise habituelle</span><br>${pct(c.discount)}</div>
+        <div><span class="muted">Tarif</span><br>${c.tarif === 'agent' ? 'Agent (PNA)' : 'MRA / réparateur'}</div>
         ${c.notes ? `<div><span class="muted">Notes</span><br>${esc(c.notes)}</div>` : ''}
       </div>
       <div class="btns" style="margin-top:.8rem"><button class="btn primary" id="newO">＋ Nouvelle offre</button><button class="btn" id="edit">Modifier</button><button class="btn danger" id="del">Supprimer</button></div>
@@ -667,7 +683,8 @@ const PRODUCT_FIELDS = [
   { k: 'brand', label: 'Marque' },
   { k: 'cat', label: 'Catégorie', type: 'select', options: Object.entries(CATS) },
   { k: 'publicPrice', label: 'Prix public HT (€)', type: 'number' },
-  { k: 'price', label: 'Mon prix de vente HT (€)', type: 'number' },
+  { k: 'price', label: 'Mon prix de vente HT (€) – MRA', type: 'number' },
+  { k: 'priceAgent', label: 'Prix agent HT (€) – facultatif', type: 'number' },
   { k: 'unit', label: 'Unité / conditionnement', ph: 'pièce, jeu, paire, bidon 10 L, lot de 20…', list: ['pièce', 'jeu (4)', 'paire', 'bidon 10 L', 'bidon 20 L', 'lot de 20', 'carton'] }
 ];
 function editProduct(p) {
@@ -702,7 +719,7 @@ function viewCatalog(app) {
       <ul class="list" id="list"></ul>
     </div>
     <div class="card"><h2>Import / export CSV (Excel)</h2>
-      <p class="small muted">Colonnes : <code>reference;designation;marque;categorie;prix_public_ht;prix_vente_ht;unite</code>. Séparateur « ; » ou « , », décimales avec virgule acceptées. Catégories : batterie, freinage, adblue, pneus, huiles, autre.</p>
+      <p class="small muted">Colonnes : <code>${CSV_HEAD.join(';')}</code> (prix_agent_ht facultatif : utilisé pour les clients au tarif agent). Séparateur « ; » ou « , », décimales avec virgule acceptées. Catégories : batterie, freinage, adblue, pneus, huiles, autre.</p>
       <div class="btns"><button class="btn" id="imp">⬆️ Importer un CSV</button><button class="btn" id="exp">⬇️ Exporter le catalogue</button><button class="btn" id="tpl">Modèle CSV vide</button></div>
       <input type="file" id="file" accept=".csv,text/csv,text/plain" class="hidden">
     </div>`;
@@ -713,7 +730,7 @@ function viewCatalog(app) {
     $('#list').innerHTML = list.length ? list.map(p => `<li class="item" data-p="${p.id}">
       <div style="font-size:1.3rem">${CAT_ICON[p.cat] || '🔧'}</div>
       <div class="grow"><div class="t">${esc(p.name)} ${p.demo ? '<span class="badge demo">exemple</span>' : ''}</div><div class="muted small">${esc([p.ref, p.brand, p.unit].filter(Boolean).join(' · '))}</div></div>
-      <div class="right num"><b>${money(p.price)}</b><div class="muted small">${p.publicPrice ? 'public ' + money(p.publicPrice) : ''}</div></div></li>`).join('')
+      <div class="right num"><b>${money(p.price)}</b><div class="muted small">${+p.priceAgent ? 'agent ' + money(p.priceAgent) + '<br>' : ''}${p.publicPrice ? 'public ' + money(p.publicPrice) : ''}</div></div></li>`).join('')
       : `<li class="empty">Aucun produit.</li>`;
   };
   draw();
@@ -726,11 +743,11 @@ function viewCatalog(app) {
   $('#imp').onclick = () => $('#file').click();
   $('#file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) importCSV(await readText(f)); };
 }
-const CSV_HEAD = ['reference', 'designation', 'marque', 'categorie', 'prix_public_ht', 'prix_vente_ht', 'unite'];
+const CSV_HEAD = ['reference', 'designation', 'marque', 'categorie', 'prix_public_ht', 'prix_vente_ht', 'unite', 'prix_agent_ht'];
 function catalogToCSV(list) {
   const q = v => { v = String(v == null ? '' : v); return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   const dec = n => (+n || 0).toFixed(2).replace('.', ',');
-  return '﻿' + [CSV_HEAD.join(';'), ...list.map(p => [p.ref, p.name, p.brand, p.cat, dec(p.publicPrice), dec(p.price), p.unit].map(q).join(';'))].join('\r\n') + '\r\n';
+  return '﻿' + [CSV_HEAD.join(';'), ...list.map(p => [p.ref, p.name, p.brand, p.cat, dec(p.publicPrice), dec(p.price), p.unit, +p.priceAgent ? dec(p.priceAgent) : ''].map(q).join(';'))].join('\r\n') + '\r\n';
 }
 function readText(file) {
   return file.arrayBuffer().then(buf => {
@@ -763,12 +780,12 @@ function importCSV(text) {
   const ix = {
     ref: find('ref'), name: find('designation', 'libelle', 'nom', 'description'), brand: find('marque', 'brand', 'fabricant'),
     cat: find('categ', 'famille'), publicPrice: find('prixpublic', 'public', 'pvc', 'tarif'), price: find('prixvente', 'monprix', 'vente', 'prixnet', 'net'),
-    unit: find('unite', 'cond', 'unit')
+    unit: find('unite', 'cond', 'unit'), priceAgent: find('prixagent', 'pna')
   };
   if (ix.ref < 0 || ix.name < 0) return alert('Colonnes « reference » et « designation » introuvables dans la 1re ligne.\nTéléchargez le « Modèle CSV vide » pour voir le format attendu.');
   const items = rows.slice(1).map(r => {
     const g = k => ix[k] >= 0 ? (r[ix[k]] || '').trim() : '';
-    return { ref: g('ref'), name: g('name'), brand: g('brand'), cat: normCat(g('cat')), publicPrice: parseNum(g('publicPrice')), price: parseNum(g('price')), unit: g('unit') };
+    return { ref: g('ref'), name: g('name'), brand: g('brand'), cat: normCat(g('cat')), publicPrice: parseNum(g('publicPrice')), price: parseNum(g('price')), unit: g('unit'), ...(ix.priceAgent >= 0 ? { priceAgent: parseNum(g('priceAgent')) } : {}) };
   }).filter(p => p.ref || p.name);
   openDialog({
     title: 'Importer le catalogue',
