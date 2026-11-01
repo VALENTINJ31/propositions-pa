@@ -3,3 +3,4 @@
 sauvegarde-*.json
 *.pdf
 .DS_Store
+*.zip
