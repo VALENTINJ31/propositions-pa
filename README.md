@@ -2,7 +2,7 @@
 
 Application web (PWA) pour créer en quelques minutes des propositions tarifaires de pièces détachées (batteries, freinage, AdBlue, pneus…) pour les garages et réparateurs, depuis le téléphone ou le PC.
 
-**Lien de l'application :** https://VOTRE-COMPTE.github.io/propositions-pa/ *(à remplacer une fois GitHub Pages activé)*
+**Lien de l'application :** https://valentinj31.github.io/propositions-pa/
 
 ## 🔒 Confidentialité
 - Aucun serveur, aucun compte. **Vos prix, clients et offres restent uniquement dans le navigateur de votre appareil** (stockage local).
