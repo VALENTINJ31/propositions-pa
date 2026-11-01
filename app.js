@@ -542,12 +542,12 @@ function pickProducts(o, onChange) {
     onOpen: f => {
       const draw = () => {
         const words = norm($('#pq', f).value).split(/\s+/).filter(Boolean);
-        const res = db.products.filter(p => (!cat || p.cat === cat) && words.every(w => norm([p.ref, p.name, p.brand, CATS[p.cat], p.unit].join(' ')).includes(w)))
+        const res = db.products.filter(p => (!cat || p.cat === cat) && words.every(w => norm([p.ref, p.name, p.brand, CATS[p.cat], p.unit, p.info].join(' ')).includes(w)))
           .sort((a, b) => a.name.localeCompare(b.name, 'fr')).slice(0, 80);
         $('#pres', f).innerHTML = res.length ? res.map(p => {
           const inO = o.lines.find(l => l.productId === p.id);
           return `<div class="pick-item" data-p="${p.id}"><div class="grow"><div><b>${esc(p.name)}</b></div>
-            <div class="muted small">${esc([p.ref, p.brand, p.unit].filter(Boolean).join(' · '))}</div></div>
+            <div class="muted small">${esc([p.ref, p.brand, p.unit].filter(Boolean).join(' · '))}</div>${p.info ? `<div class="small" style="color:var(--accent)">ℹ︎ ${esc(p.info)}</div>` : ''}</div>
             <div class="right"><div class="num"><b>${money(priceFor(p, o.clientId))}</b></div>${inO ? `<div class="in small">✓ ${num(inO.qty, 0)}</div>` : '<div class="muted small">＋ ajouter</div>'}</div></div>`;
         }).join('') : `<div class="empty">Aucun produit trouvé.${db.products.length ? '' : ' Le catalogue est vide : ajoutez des produits dans l\'onglet Catalogue.'}</div>`;
       };
@@ -685,6 +685,7 @@ const PRODUCT_FIELDS = [
   { k: 'publicPrice', label: 'Prix public HT (€)', type: 'number' },
   { k: 'price', label: 'Mon prix de vente HT (€) – MRA', type: 'number' },
   { k: 'priceAgent', label: 'Prix agent HT (€) – facultatif', type: 'number' },
+  { k: 'info', label: 'Note interne (stock, dispo… jamais sur le PDF)' },
   { k: 'unit', label: 'Unité / conditionnement', ph: 'pièce, jeu, paire, bidon 10 L, lot de 20…', list: ['pièce', 'jeu (4)', 'paire', 'bidon 10 L', 'bidon 20 L', 'lot de 20', 'carton'] }
 ];
 function editProduct(p) {
@@ -725,11 +726,11 @@ function viewCatalog(app) {
     </div>`;
   const draw = () => {
     const words = norm(st.q).split(/\s+/).filter(Boolean);
-    const list = db.products.filter(p => (!st.cat || p.cat === st.cat) && words.every(w => norm([p.ref, p.name, p.brand, p.unit].join(' ')).includes(w)))
+    const list = db.products.filter(p => (!st.cat || p.cat === st.cat) && words.every(w => norm([p.ref, p.name, p.brand, p.unit, p.info].join(' ')).includes(w)))
       .sort((a, b) => (a.cat + a.name).localeCompare(b.cat + b.name, 'fr'));
     $('#list').innerHTML = list.length ? list.map(p => `<li class="item" data-p="${p.id}">
       <div style="font-size:1.3rem">${CAT_ICON[p.cat] || '🔧'}</div>
-      <div class="grow"><div class="t">${esc(p.name)} ${p.demo ? '<span class="badge demo">exemple</span>' : ''}</div><div class="muted small">${esc([p.ref, p.brand, p.unit].filter(Boolean).join(' · '))}</div></div>
+      <div class="grow"><div class="t">${esc(p.name)} ${p.demo ? '<span class="badge demo">exemple</span>' : ''}</div><div class="muted small">${esc([p.ref, p.brand, p.unit].filter(Boolean).join(' · '))}</div>${p.info ? `<div class="small" style="color:var(--accent)">ℹ︎ ${esc(p.info)}</div>` : ''}</div>
       <div class="right num"><b>${money(p.price)}</b><div class="muted small">${+p.priceAgent ? 'agent ' + money(p.priceAgent) + '<br>' : ''}${p.publicPrice ? 'public ' + money(p.publicPrice) : ''}</div></div></li>`).join('')
       : `<li class="empty">Aucun produit.</li>`;
   };
@@ -743,11 +744,11 @@ function viewCatalog(app) {
   $('#imp').onclick = () => $('#file').click();
   $('#file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) importCSV(await readText(f)); };
 }
-const CSV_HEAD = ['reference', 'designation', 'marque', 'categorie', 'prix_public_ht', 'prix_vente_ht', 'unite', 'prix_agent_ht'];
+const CSV_HEAD = ['reference', 'designation', 'marque', 'categorie', 'prix_public_ht', 'prix_vente_ht', 'unite', 'prix_agent_ht', 'info_interne'];
 function catalogToCSV(list) {
   const q = v => { v = String(v == null ? '' : v); return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   const dec = n => (+n || 0).toFixed(2).replace('.', ',');
-  return '﻿' + [CSV_HEAD.join(';'), ...list.map(p => [p.ref, p.name, p.brand, p.cat, dec(p.publicPrice), dec(p.price), p.unit, +p.priceAgent ? dec(p.priceAgent) : ''].map(q).join(';'))].join('\r\n') + '\r\n';
+  return '﻿' + [CSV_HEAD.join(';'), ...list.map(p => [p.ref, p.name, p.brand, p.cat, dec(p.publicPrice), dec(p.price), p.unit, +p.priceAgent ? dec(p.priceAgent) : '', p.info].map(q).join(';'))].join('\r\n') + '\r\n';
 }
 function readText(file) {
   return file.arrayBuffer().then(buf => {
@@ -780,12 +781,12 @@ function importCSV(text) {
   const ix = {
     ref: find('ref'), name: find('designation', 'libelle', 'nom', 'description'), brand: find('marque', 'brand', 'fabricant'),
     cat: find('categ', 'famille'), publicPrice: find('prixpublic', 'public', 'pvc', 'tarif'), price: find('prixvente', 'monprix', 'vente', 'prixnet', 'net'),
-    unit: find('unite', 'cond', 'unit'), priceAgent: find('prixagent', 'pna')
+    unit: find('unite', 'cond', 'unit'), priceAgent: find('prixagent', 'pna'), info: find('info', 'noteint', 'dispo', 'stock')
   };
   if (ix.ref < 0 || ix.name < 0) return alert('Colonnes « reference » et « designation » introuvables dans la 1re ligne.\nTéléchargez le « Modèle CSV vide » pour voir le format attendu.');
   const items = rows.slice(1).map(r => {
     const g = k => ix[k] >= 0 ? (r[ix[k]] || '').trim() : '';
-    return { ref: g('ref'), name: g('name'), brand: g('brand'), cat: normCat(g('cat')), publicPrice: parseNum(g('publicPrice')), price: parseNum(g('price')), unit: g('unit'), ...(ix.priceAgent >= 0 ? { priceAgent: parseNum(g('priceAgent')) } : {}) };
+    return { ref: g('ref'), name: g('name'), brand: g('brand'), cat: normCat(g('cat')), publicPrice: parseNum(g('publicPrice')), price: parseNum(g('price')), unit: g('unit'), ...(ix.priceAgent >= 0 ? { priceAgent: parseNum(g('priceAgent')) } : {}), ...(ix.info >= 0 ? { info: g('info') } : {}) };
   }).filter(p => p.ref || p.name);
   openDialog({
     title: 'Importer le catalogue',

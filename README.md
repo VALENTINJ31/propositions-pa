@@ -19,7 +19,7 @@ Application web (PWA) pour créer en quelques minutes des propositions tarifaire
 4. **Catalogue** (📦) : ajoutez vos produits un par un, ou préparez-les dans Excel :
    - « Modèle CSV vide » télécharge un fichier avec les bonnes colonnes :
      `reference;designation;marque;categorie;prix_public_ht;prix_vente_ht;unite;prix_agent_ht`
-     (`prix_vente_ht` = prix MRA ; `prix_agent_ht` facultatif = prix agent / PNA)
+     (`prix_vente_ht` = prix MRA ; `prix_agent_ht` facultatif = prix agent / PNA ; colonne facultative `info_interne` = note interne, par ex. le stock, visible seulement dans l'application et jamais sur le PDF ni dans les textes envoyés)
    - Dans Excel, enregistrez au format **CSV (séparateur point-virgule)**, puis « Importer un CSV ».
    - Choisissez **Fusionner** (met à jour les mêmes références, ajoute les nouvelles) ou **Remplacer tout**.
    - Catégories : `batterie`, `freinage`, `adblue`, `pneus`, `huiles` (huiles & liquides), `autre`.

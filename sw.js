@@ -1,6 +1,6 @@
 /* Service worker : met l'application en cache pour un fonctionnement hors ligne.
    Aucune donnée client/prix ne transite ici (elles restent dans le localStorage de l'appareil). */
-const CACHE = 'propositions-pa-v3';
+const CACHE = 'propositions-pa-v4';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'pdf.js', 'demo.js', 'manifest.webmanifest',
   'vendor/jspdf.umd.min.js', 'vendor/jspdf.plugin.autotable.min.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];

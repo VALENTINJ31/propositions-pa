@@ -109,3 +109,4 @@ dialog form{display:flex;flex-direction:column;max-height:calc(100dvh - 24px)}
 pre.txt{white-space:pre-wrap;font:inherit}
 .hidden{display:none!important}
 .item .right{white-space:nowrap}
+.pick-item .right{white-space:nowrap}
