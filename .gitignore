@@ -1,0 +1,5 @@
+# Données confidentielles : ne jamais versionner
+*.csv
+sauvegarde-*.json
+*.pdf
+.DS_Store

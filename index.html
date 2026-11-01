@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Propositions PA</title>
+<meta name="description" content="Création rapide de propositions tarifaires pièces détachées – Pamiers Automobiles">
+<meta name="theme-color" content="#1f3a5f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Propositions">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <a href="#/offres" class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"><span>Propositions <b>PA</b></span></a>
+  <nav class="topnav" id="topnav"></nav>
+</header>
+<main id="app" tabindex="-1"></main>
+<nav class="bottomnav" id="bottomnav"></nav>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/jspdf.plugin.autotable.min.js"></script>
+<script src="demo.js"></script>
+<script src="pdf.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
